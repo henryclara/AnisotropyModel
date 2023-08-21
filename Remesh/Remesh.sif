@@ -1,0 +1,142 @@
+!------------------------------------------------------------------
+! Isotropic mesh adaptation:
+!------------------------------------------------------------------
+
+Header
+Mesh DB "." "Mesh"
+End
+
+Constants
+!Alpha = Real 0.76
+!G = Real 0.02
+!A = Real 0.04
+!rho = Real 5000.0
+End
+
+Simulation
+  Coordinate System  = Cartesian 2D
+  Simulation Type = Steady
+
+  Steady State Min Iterations = 6
+  Steady State Max Iterations = 6
+
+  max output level = 30
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+  Initial Condition = 1
+END
+
+Initial Condition 1
+END
+
+Body Force 1
+  Distance = Real 0.0
+  Distance Condition = Variable GroundedMask
+    Real MATC "tx"
+  ElementSize = Variable Distance
+    Real MATC "if (tx(0)<5000) {500} else {2000}"
+END
+
+Solver 1
+  Exec Solver = Before All
+  Equation = Reader
+  Procedure = "GridDataReader" "GridDataReader"
+  Filename = File "Derwael.nc"
+  X Dim Name = String "x"
+  Y Dim Name = String "y"
+  X Var Name = String "x"
+  Y Var Name = String "y"
+  !--- Interpolation variables
+  X Epsilon  = Real 1.0e-2
+  Y Epsilon  = Real 1.0e-2
+  Time Epsilon  = Real 0.01
+  Interpolation Bias = Real 0.0
+  Interpolation Multiplier = Real 1.0
+  Is Time Counter = Logical True
+  Variable 1 = File "bedrock"
+  Variable 2 = File "zs"
+  Variable 3 = File "zb"
+  Variable 4 = File "vx"
+  Variable 5 = File "vy"
+  Enable Scaling = Logical False ! Scales the Elmer grid to match the NetCDF grid
+End
+
+Solver 2
+  Exec Solver = "Before All"
+  Equation = GroundedMask
+  Procedure = "src/GroundedMaskSolver" "GroundedMaskSolver"
+  Variable = GroundedMask
+  Variable DOFs = 1
+End
+
+Solver 3
+  Equation = "SolveDistance"
+  Procedure = "src/DistanceSolveRD" "DistanceSolver1"
+  Variable = Distance
+  H scale = real 2
+  Distance Pseudo DT = Real 100
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 300
+  Linear System Convergence Tolerance = 1.0E-09
+  Linear System Abort Not Converged = False
+  Linear System Preconditioning = "ILU1"
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-4
+  Dummy Distance Computation = Logical False
+End
+
+Solver 4
+  Equation = "Initialise fn"
+  Procedure = "ElmerIceSolvers" "UpdateExport"
+
+  Exported Variable 1 = Zs
+  Exported Variable 2 = Zb
+  Exported Variable 3 = Bedrock
+  Exported Variable 4 = Distance
+  Exported Variable 5 = ElementSize
+End
+
+Solver 5
+  Exec Solver = after timestep
+  Equation = "MMG"
+  Procedure = "ElmerIce_MeshAdapt2D" "MMG2DSolver"
+  Output file name = "square_iso"
+  Metric Variable Name = String "ElementSize"
+  hausd = Real 5000.0 !Hausdorff parameter (controls the refinement near boundaries)
+  hgrad = Real 1.3  !gradation value (controls the ratio between two adjacent edges)
+End
+
+Solver 6
+  Exec Solver = After Saving
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Save Geometry Ids = Logical True ! add this line if you want to access boundaries in Paraview
+  Output File Name = File "EkstroemLGM"
+  Output Format = String vtu
+End
+
+Equation 1
+  Active Solvers(6) = 1 2 3 4 5 6
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+End
+
+Boundary Condition 4
+  Target Boundaries = 4
+End

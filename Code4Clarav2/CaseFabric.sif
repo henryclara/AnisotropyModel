@@ -1,0 +1,471 @@
+##
+##  
+##
+
+! rho = 910*1e-6/(31556926)^2 MPa a2 m-2
+$Rho = 9.1386e-19  
+!  g= 9.81*(31556926)^2 m a-2
+$g = 9.7692e15
+!  Tm = 273.15-10C
+$Tm = 263.15
+! Minimal Thickness (m)
+$Hmin=1.0e-3
+! Accumulation
+$acc=0.0 
+! Slope
+$Slope=5e-3
+! Slipperiness
+$Slip=1e-3
+
+!dudx
+$dx=1e-3;
+
+
+! we are interested in four cases
+! 1) alpha=0, iota=1 Martin 2009 
+!2) alpha=1, iota=1 Martin 2012
+! 3) alpha=0.06, iota=1 Gagliardini 2013
+! 4) alpha=0, iota=0.6 Seddik 2011
+!Fabric
+$Alpha = 0.06 
+$Iota = 1.0 
+
+
+$ function A(T) { _A = 1.0e-15*(0.2071*exp(0.5978*(T-273.15))+0.09833*exp(0.14747*(T-273.15)))}
+
+check keywords warn
+echo off
+
+Header
+  Mesh DB "." "mesh"
+  Include Path ""
+  Results Directory ""
+End
+
+Constants
+  Stefan Boltzmann = Real 0.0
+  Gas Constant = Real 0.0
+End
+
+Simulation
+  Coordinate System = "Cartesian 3D" 
+  Simulation Type = "Transient"
+
+  Timestepping Method = "bdf"
+  BDF Order = 1
+  Timestep Intervals (1)=  1000
+  Output Intervals (1)= 100
+  Timestep Sizes (1)= Real 1
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Set Dirichlet BCs By BC Numbering = Logical True
+  Initialize Dirichlet Conditions = Logical False
+  Restart Before Initial Conditions = Logical True
+
+!  Restart File = "ResultAge.dat"
+  Output File = "ResultFabric.dat"
+
+  max output level = 3
+End
+
+Body 1
+  Name = "Ice"
+  Equation = 1
+  Body Force = 1
+  Initial Condition = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Free surface"
+  Equation = 2
+  Body Force = 2
+  Initial Condition = 2
+  Material = 1
+End
+
+Body Force 1
+  Flow BodyForce 1 = Real $ g*sin(Slope)
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real $ -g*cos(Slope)
+End
+
+Body Force 2
+   hs Accumulation Flux 1 = Real 0.0e0
+   hs Accumulation Flux 2 = Real 0.0e0 
+   hs Accumulation Flux 3 = Real $ acc
+End
+
+Initial Condition 1
+  Velocity 1 = Variable Coordinate 1,
+   Real MATC "dx*tx"
+  Velocity 2 = Real 0.0
+  Velocity 3 = Variable Coordinate 3,
+   Real MATC "-dx*tx"
+  Pressure = Real 0.0
+
+  a2 1 = Real $ 1.0/3.0
+  a2 2 = Real $ 1.0/3.0
+  a2 3 = Real $ 1.0/3.0
+  a2 4 = Real 0.0
+  a2 5 = Real 0.0
+  a2 6 = Real 0.0
+End
+
+Initial Condition 2
+!  hs = Equals Coordinate 3
+!  hsREF = Equals Coordinate 3
+End
+
+!!!!! Ice
+Material 1
+  Density = Real $ Rho
+
+  Viscosity Model = String "power law"
+  Viscosity Exponent = Real $ 1.0/3.0
+  Critical Shear Rate = Real $ 1.0e-3/31556926.0 
+  Viscosity = Real $ 1.0e-6*pow(2.0*A(Tm),-1.0/3.0)
+
+!  Viscosity = Real 2.0
+
+  Mesh Elastic Modulus = 1.0
+  Mesh Poisson Ratio = 0.3
+
+    Min hs =  Variable Height, Coordinate 3
+         Real MATC "tx(1) - tx(0) + Hmin"
+!    Max hs = Variable hs
+!         Real MATC "tx+100.0"
+End
+
+
+!!!!! SOLVERS
+
+Solver 1
+  Equation = "Mesh Update"
+  Exec Solver = "Before All"
+
+!  Linear System Solver = "Direct"
+  Linear System Iterative Method = "MUMPS"
+
+  Linear System Solver = "Iterative"
+  Linear System Max Iterations = 500
+  Linear System Iterative Method = GCR
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Abort Not Converged = False
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 0
+End
+
+Solver 2
+   Equation = "Flowdepth"
+   Exec Solver = "Before All"
+
+   Procedure = File "src/Flowdepth" "FlowDepthSolver"
+
+   Variable = String "Depth"
+   Variable DOFs = 1
+
+!  Linear System Solver = "Direct"
+  Linear System Iterative Method = "MUMPS"
+
+  Linear System Solver = "Iterative"
+  Linear System Max Iterations = 500
+  Linear System Iterative Method = GCR
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Abort Not Converged = False
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 0
+
+   Gradient = Real -1.0E00
+   Calc Free Surface = Logical True
+   Freesurf Name = String "FreeSurf"
+End
+
+Solver 3
+  Equation = "Flowheight"
+  Exec Solver = "Before All"
+
+  Procedure = File "src/Flowdepth" "FlowDepthSolver"
+
+  Variable = String "Height" 
+  Variable DOFs = 1
+
+!  Linear System Solver = "Direct"
+  Linear System Iterative Method = "MUMPS"
+
+  Linear System Solver = "Iterative"
+  Linear System Max Iterations = 500
+  Linear System Iterative Method = GCR
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Abort Not Converged = False
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 0
+
+  Gradient = Real 1.0E00 ! this time positive
+  Calc Free Surface = Logical False
+End
+
+Solver 4
+  Equation = "Navier-Stokes"
+  Exec Solver = "Never"
+
+  Flow model = String "Stokes"
+
+!  Stabilization Method = String "Stabilized"
+  Stabilization Method = String "Bubbles"
+
+  Linear System Solver = "Direct"
+  Linear System Iterative Method = "MUMPS"
+  Mumps percentage increase working space = Integer 60
+
+!  Linear System Solver = "Iterative"
+  Linear System Max Iterations = 500
+!  Linear System Iterative Method = GCR
+  Linear System Convergence Tolerance = 1.0E-08
+  Linear System Abort Not Converged = False
+  Linear System Preconditioning = ILU4
+  Linear System Residual Output = 0
+  
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Newton After Iterations = 1
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 0.9
+
+  Steady State Convergence Tolerance = 1.0e-04
+  Steady State Relaxation Factor = Real 0.9
+End
+
+Solver 5
+  Equation =  String "Free Surface Evolution"
+  Exec Solver = "Never"
+
+  Variable = "hs"
+  Variable DOFs = 1
+
+  Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
+
+  Exported Variable 1 = Temperature        ! Define Temperature Mandatory!
+  Exported Variable 1 DOFS = Integer 1
+
+!  Linear System Solver = "Direct"
+  Linear System Iterative Method = "MUMPS"
+
+  Linear System Solver = "Iterative"
+  Linear System Max Iterations = 500
+  Linear System Iterative Method = GCR
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Abort Not Converged = False
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 0
+
+  ! this enables the limitation of the free surface
+  ! by upper and/or lower limits (see material section above)
+  ! using a variational inequality formulation
+  Apply Dirichlet = Logical False
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Min Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-06
+
+  Steady State Convergence Tolerance = 1.0e-4
+
+!  Stabilization Method = String "Bubbles"
+  Stabilization Method = String "Stabilized"
+  Flow Solution Name = String "Flow Solution"
+
+  Exported Variable 1 =  hs Residual
+  Exported Variable 1 DOFS = 1
+  Exported Variable 2 = hsREF
+  Exported Variable 2 DOFS = 1
+End
+
+Solver 6
+   Equation = "Velocity gradient tensor"
+   Exec Solver =  "Before All"
+
+   Procedure = "./src/DeformationSolver" "DSolver"
+
+   Variable = String "VG[D:6 W:3]"!dxx dyy dzz dxy dxz dyz wxy wxz wyz in 3D 
+   Variable DOFs =  9                        
+
+   Optimize Bandwidth = Logical False 
+
+   Linear System Solver = "Iterative"
+   Linear System Iterative Method = "Diagonal"
+   Linear System Max Iterations = 300
+   Linear System Convergence Tolerance = 1.0e-6
+   Linear System Abort Not Converged = False
+   Linear System Preconditioning = "None"
+   Linear System Residual Output = 0
+End
+
+Solver 7
+   Equation = "Fabric Evolution"
+   Exec Solver =  "After Timestep"
+!   Exec Solver =  "Never"
+
+   Variable = String "a2" !6 DOFs: axx ayy azz axy axz yz in 3D 
+   Variable DOFs =  6     
+
+   Procedure = "./src/FabricEvolutionSolver" "FabricEvolutionSolver"
+
+   Optimize Bandwidth = Logical False
+
+   Linear System Solver = "Iterative"
+   Linear System Iterative Method = "Diagonal"
+   Linear System Max Iterations = 300
+   Linear System Convergence Tolerance = 1.0e-6
+   Linear System Abort Not Converged = False
+   Linear System Preconditioning = "None"
+   Linear System Residual Output = 0
+
+   Alpha = Real $ Alpha
+   Iota = Real $ Iota
+   Viscosity File = String "040010010.Va"
+End
+
+Solver 8
+  Procedure = "SaveData" "SaveLine"
+  Exec Solver = "Never"
+  Filename =  "SurfaceFabric.dat"
+  File Append = Logical False
+End
+
+Solver 9
+  Equation = "Result Output"
+  Exec Solver = "After Saving"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = "OutputFabric"
+  Output Format = String "vtu"
+End
+
+!!!!! EQUATION
+
+Equation 1
+  Active Solvers (8) = 1 2 3 4 6 7 8 9
+  Flow Solution Name = String "Flow Solution"
+  Convection = String "Computed"
+End
+
+Equation 2
+  Active Solvers(1) = 5
+  Flow Solution Name = String "Flow Solution"
+  Convection = String "Computed"  
+End
+
+!!!!! BOUNDARY CONDITIONS
+
+
+Boundary Condition 1
+  Name = "Ice Base"
+  Target Boundaries = 5
+
+  Height = Real 0.0
+ 
+  Mesh Update 1 = Real 0.0
+  Mesh Update 2 = Real 0.0
+  Mesh Update 3 = Real 0.0
+
+!  Velocity 1 = Real 0.0
+!  Velocity 2 = Real 0.0
+!  Velocity 3 = Real 0.0
+
+  Flow Force BC = Logical True 
+  Normal-Tangential Velocity = Logical True
+  Velocity 1 = Real 0.0
+!  Slip Coefficient 2 = Real $ Slip
+!  Slip Coefficient 3 = Real $ Slip
+  Slip Coefficient 2 = Variable Coordinate 2
+    Real MATC "if (tx<324000){Slip}else{1e6}"
+  Slip Coefficient 3 = Variable Coordinate 2
+    Real MATC "if (tx<324000){Slip}else{1e6}"
+    
+  Save Line = Logical True
+End
+
+
+Boundary Condition 2
+  Name = "surface"
+  Target Boundaries = 6
+  Body ID = 2
+
+  Depth = Real 0.0
+
+  Age = Real 0.0
+
+  a2 1 = Real $ 1.0/3.0
+  a2 2 = Real $ 1.0/3.0
+  a2 3 = Real $ 1.0/3.0
+  a2 4 = Real 0.0
+  a2 5 = Real 0.0
+  a2 6 = Real 0.0
+
+
+  Mesh Update 1 = Real 0.0
+  Mesh Update 2 = Real 0.0
+  Mesh Update 3 = Variable TimeStep, hs, hsREF
+    Real MATC "tx(1)-tx(2)"
+
+  Save Line = Logical True
+End 
+
+Boundary Condition 3
+  Name = "Lateral"
+  Target Boundaries(2) = 1 3
+
+  Flow Force BC = Logical True 
+  Normal-Tangential Velocity = Logical True
+  Normal-Tangential Velocity Rotate = Logical False
+  Slip Coefficient 1 = Real 1.0e6
+
+  Mesh Update 1 = Real 0.0
+  Mesh Update 2 = Real 0.0
+
+  Save Line = Logical False
+End
+
+
+Boundary Condition 4
+  Name = "inflow"
+  Target Boundaries = 4
+
+  Periodic BC = 5
+  Periodic BC Velocity 1 = Logical True
+  Periodic BC Velocity 2 = Logical True
+  Periodic BC Velocity 3 = Logical True
+  Periodic BC Pressure = Logical True
+  Periodic BC hs = Logical True
+  Periodic BC a2 1 = Logical True
+  Periodic BC a2 2 = Logical True
+  Periodic BC a2 3 = Logical True
+  Periodic BC a2 4 = Logical True
+  Periodic BC a2 5 = Logical True
+  Periodic BC a2 6 = Logical True    
+
+  ! In inflow boundaries you can use:
+  !a2In = Logical True
+  ! That will assume that da2dx=da2dy=0
+  
+
+
+  Periodic BC Age = Logical True !Not sure about this. Use
+  !AgeIn = Logical True
+
+  Mesh Update 1 = Real 0.0
+  Mesh Update 2 = Real 0.0
+
+  Save Line = Logical False
+End
+
+Boundary Condition 5
+  Name = "outflow"
+  Target Boundaries(1) = 2
+
+
+  Mesh Update 1 = Real 0.0
+  Mesh Update 2 = Real 0.0
+
+  Save Line = Logical False
+End

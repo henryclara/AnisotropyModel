@@ -1,0 +1,3 @@
+Forward: Previous version (working for iota=1, potentially not working for iota=0.5)
+Forward2: Carlos version (currently diverging)
+Forward3: Previous version with increments of Carlos code (with tests)

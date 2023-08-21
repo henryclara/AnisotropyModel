@@ -1,0 +1,29 @@
+Here comes the Nodelist:
+l10361
+Here comes the partition the job runs in:
+compute
+#ElmerGrid 2 2 Mesh -partition 10 8 1 -autoclean
+#ElmerGrid 2 2 Mesh -metis 80 4  -autoclean
+0: ELMER SOLVER (v 9.0) STARTED AT: 2023/03/22 14:43:21
+0: ParCommInit:  Initialize #PEs:            1
+0: MAIN: 
+0: MAIN: =============================================================
+0: MAIN: ElmerSolver finite element software, Welcome!
+0: MAIN: This program is free software licensed under (L)GPL
+0: MAIN: Copyright 1st April 1995 - , CSC - IT Center for Science Ltd.
+0: MAIN: Webpage http://www.csc.fi/elmer, Email elmeradm@csc.fi
+0: MAIN: Version: 9.0 (Rev: unknown, Compiled: 2022-06-01)
+0: MAIN:  Running one task without MPI parallelization.
+0: MAIN:  Running with just one thread per task.
+0: MAIN:  MUMPS library linked in.
+0: MAIN:  Intel MKL linked in.
+0: MAIN: =============================================================
+0: LoadInputFile: Trying to read "Run Control" section only
+0: MAIN: 
+0: MAIN: 
+0: MAIN: -------------------------------------
+0: MAIN: Reading Model: Remesh.sif
+0: LoadInputFile: Scanning input file: Remesh.sif
+0: LoadInputFile: Scanning only size info
+0: LoadInputFile: First time visiting
+0: LoadInputFile: Reading base load of sif file

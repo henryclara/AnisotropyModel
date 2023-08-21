@@ -1,0 +1,166 @@
+Here comes the Nodelist:
+l10237
+Here comes the partition the job runs in:
+compute
+Current directory: /work/bm1164/m300832/Anisotropy/Code4Clarav2
+Going into slurm submit dir.
+Current directory: /work/bm1164/m300832/Anisotropy/Code4Clarav2
+make: Nothing to be done for 'compile'.
+echo 4 1 4
+4 1 4
+ElmerGrid 1 2 mesh.grd -partition 4 1 1 -periodic 1 1 0
+
+Starting program Elmergrid
+Elmergrid reading in-line arguments
+The mesh will be partitioned geometrically to 4 partitions.
+Output will be saved to file mesh.
+
+Elmergrid loading data:
+-----------------------
+Loading the geometry from file 'mesh.grd'.
+Loading ElmerGrid file version: 210903
+Defining the coordinate system (3-DIM).
+Loading 2 subcell limits in X-direction
+Loading 2 subcell limits in Y-direction
+Loading 2 subcell limits in Z-direction
+Loading material structure
+LoadElmergrid: materials interval is [1,1]
+Loading boundary conditions
+Found 6 boundaries
+Reached the end of command file
+Found 1 divisions for grid
+
+Loading ElmerGrid commands from file 'mesh.grd'.
+Reached the end of command file
+Read commands from a file
+
+Elmergrid creating and manipulating meshes:
+-------------------------------------------
+1 cells were created.
+Numbered 121 knots in 100 4-node elements.
+Numbering order was <x><y> and max levelwidth 13.
+10 element sides between materials -1 and 1 were located to type 1.
+10 element sides between materials -3 and 1 were located to type 3.
+10 element sides between materials -2 and 1 were located to type 2.
+10 element sides between materials -4 and 1 were located to type 4.
+No boundary between materials -5 and 1 exists.
+No boundary between materials -6 and 1 exists.
+Created 5 extruded divisions.
+Maximum elementtype 404 extruded to type 808.
+Allocated for 8 new BC lists
+Extruded mesh has 500 elements in 5 levels.
+Simple extrusion would have 500 elements
+Extruded BCs list 0 of types [1,1] has 50 elements.
+Extruded BCs list 1 of types [3,3] has 50 elements.
+Extruded BCs list 2 of types [2,2] has 50 elements.
+Extruded BCs list 3 of types [4,4] has 50 elements.
+Layer BCs list 6 of types [5,5] has 100 elements.
+Layer BCs list 7 of types [6,6] has 100 elements.
+Created 500 elements and 726 nodes by extruding the 2D geometry
+
+Elmergrid partitioning meshes:
+------------------------------
+Finding periodic nodes in direction 1
+Coordinate in dimension 1 is at the interval [2.2e+05, 2.3e+05]
+Looking for 66 periodic nodes
+Finding periodic nodes in direction 2
+Coordinate in dimension 2 is at the interval [3.2e+05, 3.25e+05]
+Looking for 66 periodic nodes
+Found all in all 132 periodic nodes.
+PartitionSimpleElements
+Making a simple partitioning for 500 elements in 3-dimensions.
+Ordering 1st direction with (1*x + 0.0001*y + 1e-08*z)
+Creating an inverse topology of the finite element mesh
+There are from 1 to 8 connections in the inverse topology.
+Each node is in average in 5.510 elements
+Number of nodal partitions: 4
+Set the node partitions by the dominating element partition.
+There are from 251 to 394 nodes in the 4 partitions.
+Successfully made a partitioning with 125 to 125 elements.
+Finding secondary periodic parents for boundary elements
+Number of potential periodic mappings is 126
+Number of potential periodic targets is 114
+Maximum number of elements associated with periodic nodes is 4
+Found 100 secondary parents for 100 potential sides.
+Optimizing the partitioning at boundaries.
+Round 1: 20 bulk elements with BCs removed from interface.
+Ownership of 20 parents was changed at BCs
+Optimizing for 4 partitions
+Creating a table showing all parenting partitions of nodes.
+Nodes belong to 2 partitions in maximum
+There are 300 shared nodes which is 41.32 % of all nodes.
+The initial owner was not any of the elements for 0 nodes
+Checking partitioning before optimization
+Checking for partitioning
+Information on partition bandwidth
+Distribution of elements, nodes and shared nodes
+     partition  elements   nodes      shared    
+     1          125        233        83        
+     2          125        162        82        
+     3          125        168        82        
+     4          125        163        81        
+Average number of elements in partition 1.815e+02
+Maximum deviation in ownership 71
+Average deviation in ownership 2.982e+01
+Average relative deviation 16.43 %
+Checking for problematic sharings
+Optimizing sharing for 4 partitions
+Changed the ownership of 3 nodes
+There shouldn't be any problematic sharings, knock, knock...
+The partitioning was optimized: 3
+Checking partitioning after optimization
+Checking for partitioning
+Information on partition bandwidth
+Distribution of elements, nodes and shared nodes
+     partition  elements   nodes      shared    
+     1          125        233        83        
+     2          125        163        81        
+     3          125        164        86        
+     4          125        166        78        
+Partitioning routines finished!
+
+Elmergrid saving data with method 2:
+-------------------------------------
+Saving Elmer mesh in partitioned format
+Number of boundary nodes at the boundary: 402
+Number of additional interface nodes: 0
+Created mesh directory: mesh
+Created subdirectory: partitioning.4
+Saving mesh in parallel ElmerSolver format to directory mesh/partitioning.4.
+Nodes belong to 2 partitions in maximum
+Saving mesh for 4 partitions
+   part  elements   nodes      shared   bc elems
+   1     125        233        83       180     
+   2     125        163        81       70      
+   3     125        164        86       80      
+   4     125        166        78       70      
+----------------------------------------------------------------------------------------------
+   ave   125.0      181.5      82.0     100.0    0.0     
+Writing of partitioned mesh finished
+
+Thank you for using Elmergrid!
+Send bug reports and feature wishes to elmeradm@csc.fi
+0: ELMER SOLVER (v 9.0) STARTED AT: 2023/08/16 13:33:49
+0: ParCommInit:  Initialize #PEs:            1
+0: MAIN: 
+0: MAIN: =============================================================
+0: MAIN: ElmerSolver finite element software, Welcome!
+0: MAIN: This program is free software licensed under (L)GPL
+0: MAIN: Copyright 1st April 1995 - , CSC - IT Center for Science Ltd.
+0: MAIN: Webpage http://www.csc.fi/elmer, Email elmeradm@csc.fi
+0: MAIN: Version: 9.0 (Rev: unknown, Compiled: 2022-06-01)
+0: MAIN:  Running one task without MPI parallelization.
+0: MAIN:  Running with just one thread per task.
+0: MAIN:  MUMPS library linked in.
+0: MAIN:  Intel MKL linked in.
+0: MAIN: =============================================================
+0: LoadInputFile: Trying to read "Run Control" section only
+0: MAIN: 
+0: MAIN: 
+0: MAIN: -------------------------------------
+0: MAIN: Reading Model: CaseFabric.sif
+0: LoadInputFile: Scanning input file: CaseFabric.sif
+0: LoadInputFile: Scanning only size info
+0: LoadInputFile: First time visiting
+0: LoadInputFile: Reading base load of sif file
+0: ERROR:: ReadAndTrim: LUA not included, cannot continue
