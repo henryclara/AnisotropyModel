@@ -1,148 +1,140 @@
- SUBROUTINE FabricEvolutionSolver( Model,Solver,dt,TransientSimulation )
-   !------------------------------------------------------------------------------
-   !******************************************************************************
-   !  Calculate 2nd order orientation tensor evolution. SemiLagrangian Method
-   !
-   !  Notes: 
-   !  Reference to Martin and Gudmundsson (2012), Effects on nonlinear rheology and anisotropy on the
-   !  relationship between age and depth at ice divides,TC, would be appreciated.  
-   !
-   !  Numerical details:
-   !  This solver implement a semilagrangian algoritm with a two-time-level scheme and linear interpolation. 
-   !  It is based in Staniforth, Andrew, Jean Côté, 1991: Semi-Lagrangian Integration Schemes for Atmospheric 
-   !  Models—A Review. Mon. Wea. Rev., 119, 2206–2223.
-   ! 
-   !  Changes made by Clara Henry
-   !******************************************************************************
-   USE DefUtils
+SUBROUTINE FabricEvolutionSolver( Model,Solver,dt,TransientSimulation )
+  !------------------------------------------------------------------------------
+  !******************************************************************************
+  !  Calculate 2nd order orientation tensor evolution. SemiLagrangian Method
+  !
+  !  Notes: 
+  !  Reference to Martin and Gudmundsson (2012), Effects on nonlinear rheology and anisotropy on the
+  !  relationship between age and depth at ice divides,TC, would be appreciated.  
+  !
+  !  Numerical details:
+  !  This solver implement a semilagrangian algoritm with a two-time-level scheme and linear interpolation. 
+  !  It is based in Staniforth, Andrew, Jean Côté, 1991: Semi-Lagrangian Integration Schemes for Atmospheric 
+  !  Models—A Review. Mon. Wea. Rev., 119, 2206–2223.
+  !******************************************************************************
+  USE DefUtils
 
 
-   IMPLICIT NONE
-   !------------------------------------------------------------------------------
-   TYPE(Solver_t) :: Solver
-   TYPE(Model_t) :: Model
+  IMPLICIT NONE
+  !------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
 
-   REAL(KIND=dp) :: dt
-   LOGICAL :: TransientSimulation
-   !------------------------------------------------------------------------------
-   ! Local variables
-   !------------------------------------------------------------------------------
-   Integer :: DIM,N,e,i,j,k,kf,ka,kd,kd2,kk,NMax,NM,stat
-   Logical :: GotIt,FirstTime=.TRUE.,IsThere
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+  !------------------------------------------------------------------------------
+  ! Local variables
+  !------------------------------------------------------------------------------
+  Integer :: DIM,N,e,i,j,k,kf,ka,kd,kd2,kk,NMax,NM,stat
+  Logical :: GotIt,FirstTime=.TRUE.,IsThere
 
-   INTEGER, POINTER :: a2Perm(:)
- !!!!!  REAL(KIND=dp), POINTER :: a2(:),a20(:)
-   Integer :: DOFs
+  INTEGER, POINTER :: a2Perm(:)
+!!!!!  REAL(KIND=dp), POINTER :: a2(:),a20(:)
+  Integer :: DOFs
 
-   TYPE(Element_t),POINTER :: Element
-   TYPE(Nodes_t)   :: ElementNodes
-   INTEGER,  POINTER ::  NodeIndexes(:)
-   TYPE(Matrix_t), POINTER :: Systemmatrix
+  TYPE(Element_t),POINTER :: Element
+  TYPE(Nodes_t)   :: ElementNodes
+  INTEGER,  POINTER ::  NodeIndexes(:)
+  TYPE(Matrix_t), POINTER :: Systemmatrix
 
-   CHARACTER(LEN=MAX_NAME_LEN) :: FlowSolName
-   TYPE(Variable_t), POINTER :: FlowSol
-   INTEGER, POINTER :: FlowPerm(:)
-   REAL(KIND=dp), POINTER :: Flow(:)
-   INTEGER :: FlowDOFs
+  CHARACTER(LEN=MAX_NAME_LEN) :: FlowSolName
+  TYPE(Variable_t), POINTER :: FlowSol
+  INTEGER, POINTER :: FlowPerm(:)
+  REAL(KIND=dp), POINTER :: Flow(:)
+  INTEGER :: FlowDOFs
 
-   INTEGER :: NNMAX
-   INTEGER,  ALLOCATABLE :: NoNeigh(:),NeighList(:,:)
-   REAL(KIND=dp) :: xa(3),xm(3),xd(3),alpha(3),um(3)
-   REAL(KIND=dp), DIMENSION(3) :: LocalCoordinates
-   REAL(KIND=dp) :: eps=1.0e-6
-   REAL(KIND=dp), ALLOCATABLE :: Vector(:,:)
-   Integer :: iv,ip,jp,kp,lp
+  INTEGER :: NNMAX
+  INTEGER,  ALLOCATABLE :: NoNeigh(:),NeighList(:,:)
 
-   REAL(KIND=dp) :: AlphaFabric,gama,beta,lambda1,lambda2,EU
+  REAL(KIND=dp) :: xa(3),xm(3),xd(3),alpha(3),um(3)
+  REAL(KIND=dp), DIMENSION(3) :: LocalCoordinates
+  REAL(KIND=dp) :: eps=1.0e-6
+  REAL(KIND=dp), ALLOCATABLE :: Vector(:,:)
+  Integer :: iv,ip,jp,kp,lp
 
-   REAL(KIND=dp) :: Rho, Iota
+  REAL(KIND=dp) :: Rho, Iota
 
-   REAL(KIND=dp) :: fa,fd
-   INTEGER :: a4DOFs,etaDOFs,DDOFs,WDOFs,MaxDOFs
-   REAL(KIND=dp), ALLOCATABLE :: a2d(:),a2(:), a2a(:),a4(:), a2o(:),&
-         Angle(:),FabricGrid(:)&
-        ,eta(:,:),etaTemp(:,:),DTay(:),DU(:),D(:),W(:),F(:)
-   Integer :: Swap(6)
-   CHARACTER(LEN=MAX_NAME_LEN) :: viscosityFile
+  REAL(KIND=dp) :: fa,fd
+  INTEGER :: a4DOFs,etaDOFs,DDOFs,WDOFs,MaxDOFs
+  REAL(KIND=dp), ALLOCATABLE :: a2d(:),a2(:), a2a(:),a4(:),a2o(:),Angle(:),FabricGrid(:)&
+       ,eta(:,:),etaTemp(:,:),DTay(:),DU(:),D(:),W(:),F(:)
+  Integer :: Swap(6)
+  CHARACTER(LEN=MAX_NAME_LEN) :: viscosityFile
 
-   !   REAL(KIND=dp) :: at,st,totat,totst,CPUTime,Norm,PrevNorm,RelativeChange
-      REAL(KIND=dp) :: at,st,totat,totst,Norm,PrevNorm,RelativeChange
+  !   REAL(KIND=dp) :: at,st,totat,totst,CPUTime,Norm,PrevNorm,RelativeChange
+  REAL(KIND=dp) :: at,st,totat,totst,Norm,PrevNorm,RelativeChange
 
-   !Experimental
-   LOGICAL, ALLOCATABLE :: Found(:),isBC(:),isa2In(:)
-   TYPE(ValueList_t), POINTER :: BC
-   REAL(KIND=dp), ALLOCATABLE :: Cond(:)
+  !Experimental
+  LOGICAL, ALLOCATABLE :: Found(:),isBC(:),isa2In(:)
+  TYPE(ValueList_t), POINTER :: BC
+  REAL(KIND=dp), ALLOCATABLE :: Cond(:)
 
-   INTEGER :: nn,precv
-   INTEGER, POINTER :: nlist(:)
+  INTEGER :: nn,precv
+  INTEGER, POINTER :: nlist(:)
 
-   INTEGER :: ierr,gk
-   INTEGER :: request(ParEnv % PEs)
-   TYPE buffer_t
-      INTEGER :: n
-      INTEGER, ALLOCATABLE :: gbuff(:)
-      REAL(KIND=dp), ALLOCATABLE :: vbuff(:)
-   END TYPE buffer_t
-   TYPE(buffer_t) :: RequestSend(ParEnv % PEs),RequestRecv(ParEnv % PEs)
-   TYPE(buffer_t) :: ReplySend(ParEnv % PEs),ReplyRecv(ParEnv % PEs)
-
-   INTERFACE
-      SUBROUTINE IBOF(ai,a4)
-        USE Types
-        REAL(KIND=dp),intent(in) :: ai(6)
-        REAL(KIND=dp),intent(out) :: a4(9)
-      END SUBROUTINE IBOF
-
-      Subroutine R2Ro(ai,dim,a2,angle)
-        USE Types
-        REAL(KIND=dp),intent(in) :: ai(6)
-        Integer :: dim
-        REAL(KIND=dp),intent(out) :: a2(3), Angle(3)
-      End Subroutine R2Ro
-
-      Subroutine OPILGGE_ai_nl(a2,Angle,etaI,eta36)
-        USE Types
-        REAL(kind=dp), INTENT(in),  DIMENSION(3)   :: a2
-        REAL(kind=dp), INTENT(in),  DIMENSION(3)   :: Angle
-        REAL(kind=dp), INTENT(in),  DIMENSION(:)   :: etaI
-        REAL(kind=dp), INTENT(out), DIMENSION(6,6) :: eta36
-      END SUBROUTINE OPILGGE_ai_nl
-
-   END INTERFACE
-
-   SAVE FirstTime,NoNeigh,NeighList,Found,isBC,isa2In
-
-   WRITE(Message,'(a)') 'Start Solver'
-   CALL Info('FabricEvolutionSolver', Message, Level=4)
-
-   !------------------------------------------------------------------------------
-   ! Get Constants
-   !------------------------------------------------------------------------------
-
-   DIM = CoordinateSystemDimension()
-   NMAX = Model % MaxElementNodes
-   NM = Solver % Mesh % NumberOfNodes
-
-   NNMAX=20!8
-   a4DOFs=9
-   etaDOFs=36
-   DDOFs=6
-   WDOFs=3
-   MaxDOFs=36
+  INTEGER :: ierr,gk
+  INTEGER :: request(ParEnv % PEs)
+  TYPE buffer_t
+     INTEGER :: n
+     INTEGER, ALLOCATABLE :: gbuff(:)
+     REAL(KIND=dp), ALLOCATABLE :: vbuff(:)
+  END TYPE buffer_t
+  TYPE(buffer_t) :: RequestSend(ParEnv % PEs),RequestRecv(ParEnv % PEs)
+  TYPE(buffer_t) :: ReplySend(ParEnv % PEs),ReplyRecv(ParEnv % PEs)
 
 
-   AlphaFabric = ListGetConstReal(Solver % Values, 'Alpha',GotIt)
-   IF(.NOT. GotIt) CALL Fatal( 'FabricEvolutionSolver','Could find value of Alpha, Aborting.' ) 
-   Iota = ListGetConstReal(Solver % Values, 'Iota',GotIt)
-   IF(.NOT. GotIt) CALL Fatal( 'FabricEvolutionSolver','Could find value of Iota, Aborting.' )
-   Rho = ListGetConstReal(Solver % Values, 'Alpha',GotIt) !Swapping to Rho as Fabien
-   IF(.NOT. GotIt) CALL Fatal( 'FabricEvolutionSolver','Could find value of Alpha, Aborting.' ) 
+  INTERFACE
+     SUBROUTINE IBOF(ai,a4)
+       USE Types
+       REAL(KIND=dp),intent(in) :: ai(6)
+       REAL(KIND=dp),intent(out) :: a4(9)
+     END SUBROUTINE IBOF
 
-   lambda1=2*((gama+2)/(4*gama-1)*beta-1.0)
-   lambda2=(1.0-beta)
-!   EU = 1.0_dp/(2._dp/5._dp+beta/5.0_dp*(2._dp+3._dp/(4._dp*gama-1._dp)));
-   EU = 1.0d0
- !------------------------------------------------------------------------------
+     Subroutine R2Ro(ai,dim,a2,angle)
+       USE Types
+       REAL(KIND=dp),intent(in) :: ai(6)
+       Integer :: dim
+       REAL(KIND=dp),intent(out) :: a2(3), Angle(3)
+     End Subroutine R2Ro
+
+     Subroutine OPILGGE_ai_nl(a2,Angle,etaI,eta36)
+       USE Types
+       REAL(kind=dp), INTENT(in),  DIMENSION(3)   :: a2
+       REAL(kind=dp), INTENT(in),  DIMENSION(3)   :: Angle
+       REAL(kind=dp), INTENT(in),  DIMENSION(:)   :: etaI
+       REAL(kind=dp), INTENT(out), DIMENSION(6,6) :: eta36
+     END SUBROUTINE OPILGGE_ai_nl
+
+  END INTERFACE
+
+
+  SAVE FirstTime,NoNeigh,NeighList,Found,isBC,isa2In,FabricGrid
+
+  WRITE(Message,'(a)') 'Start Solver'
+  CALL Info('FabricEvolutionSolver', Message, Level=4)
+
+  !------------------------------------------------------------------------------
+  ! Get Constants
+  !------------------------------------------------------------------------------
+
+  DIM = CoordinateSystemDimension()
+  NMAX = Model % MaxElementNodes
+  NM = Solver % Mesh % NumberOfNodes
+
+  NNMAX=20!8
+  a4DOFs=9
+  etaDOFs=36
+  DDOFs=6
+  WDOFs=3
+  MaxDOFs=36
+
+
+  Rho = ListGetConstReal(Solver % Values, 'Alpha',GotIt) !Swapping to Rho as Fabien
+  IF(.NOT. GotIt) CALL Fatal( 'FabricEvolutionSolver','Could find value of Alpha, Aborting.' ) 
+  Iota = ListGetConstReal(Solver % Values, 'Iota',GotIt)
+  IF(.NOT. GotIt) CALL Fatal( 'FabricEvolutionSolver','Could find value of Iota, Aborting.' )
+ 
+  !------------------------------------------------------------------------------
   !    Get variables for the solution
   !------------------------------------------------------------------------------
 
@@ -180,10 +172,10 @@
        a2(DOFs),                                 &
        a2a(DOFs),                                 &
        a4(a4DOFs),                                 &
-       a2o(DOFs),                                 &
-       Angle(DOFs),                                 &
+       a2o(3),                                 &
+       Angle(3),                                 &
        eta(DDOFs,DDOFs),                               &
-       etaTemp(DDOFs,DDOFs),                               &
+       etaTemp(DDOFs,DDOFs),                               &       
        DTay(DDOFs),                                 &
        DU(DDOFs),                                 &
        D(DDOFs),                                 &
@@ -199,7 +191,7 @@
           Neighlist(NM,NNMAX),&
           Found(NM),                  &
           Cond(NMAX),                  &
-          FabricGrid(4879),                                 &
+          FabricGrid(4879),                                 &            
           STAT=stat  )
      IF ( stat /= 0 ) THEN
         CALL Fatal('FabricEvolutionSolver','Memory allocation error, Aborting.')
@@ -320,6 +312,7 @@
      READ(1 , '(e14.8)' ) FabricGrid(4879)
      CLOSE(1)
 
+
   END IF
 
   SystemMatrix => Solver % Matrix
@@ -380,11 +373,11 @@
            IsThere=.TRUE.
            EXIT
         END IF
-        
+
      END DO
 
      IF ( IsThere) THEN
-        
+
 
         DO j=1,DIM
            Vector(j,1:n)=Flow(FlowDOFs*(FlowPerm(NodeIndexes)-1)+j)
@@ -414,9 +407,11 @@
                 LocalCoordinates(1),LocalCoordinates(2), LocalCoordinates(3))
         END DO
 
-        ! a4 at the middle point (IBOF closure)  
+        !    fourth order orientation tensor
+           ! a4 at the middle point (IBOF closure)  
 !!! (a2 rentre dans l'ordre : 11, 22, 33, 12, 23 ,13)
-        CALL IBOF((/a2(1),a2(2),a2(3),a2(4),a2(6),a2(5)/),a4)
+        Swap(1:6)=(/1,2,3,4,6,5/)
+        CALL IBOF(a2(Swap(1:6)),a4)
 
         !D at the middle point
         CALL GetVectorLocalSolution(Vector, 'VG',Element)
@@ -431,16 +426,11 @@
                 LocalCoordinates(1),LocalCoordinates(2), LocalCoordinates(3))
         END DO
 
+        
         DU=0.0d0
         IF(Rho>0.0) THEN
            !Getting viscosity at the middle point
-
-           !    fourth order orientation tensor
-           ! a4 at the middle point (IBOF closure)  
-!!! (a2 rentre dans l'ordre : 11, 22, 33, 12, 23 ,13)
-           Swap(1:6)=(/1,2,3,4,6,5/)
-           CALL IBOF(a2(Swap(1:6)),a4)
-
+           
            !     A2 expressed in the orthotropic frame
            call R2Ro(a2(Swap(1:6)),DIM,a2o,Angle)
 
@@ -466,8 +456,7 @@
            D(j)=DTay(j)*(1.0-Rho)+DU(j)*Rho
  !          PRINT *,j,DTay(j),DU(j),D(j)
         END DO
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+ !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! 
         !  Calculating the forcing in the middle point
         !
@@ -476,47 +465,47 @@
         ! algebra/Forcing2D.f90 and algebra/Forcing3D.f90   
         !
 
-        WRITE( Message, * ) 'Alpha:   : ',Rho
-        CALL Info( 'FabricEvolutionSolver', Message, Level=3 )
-        WRITE( Message, * ) 'Iota:   : ',Iota
-        CALL Info( 'FabricEvolutionSolver', Message, Level=3 )
-
         ! Fxx
-        F(1)=(2*a4(1)*D(1) - 2*a2(1)*D(1) + 4*a4(7)*D(4) - 2*a2(4)*D(4) + &
-             4*a4(6)*D(5) - 2*a2(5)*D(5) + 2*a4(3)*D(2) + 4*a4(4)*D(6)) * Iota + &
-             2*a2(4)*W(1) + 2*a2(5)*W(2) + (- 2*D(3)*(a4(1) - a2(1) + a4(3))) * Iota
-
+        F(1)=2*a4(1)*D(1) - 2*a2(1)*D(1) + 4*a4(7)*D(4) - 2*a2(4)*D(4) &
+             +4*a4(6)*D(5) - 2*a2(5)*D(5) + 2*a4(3)*D(2) + 4*a4(4)*D(6) &
+             - 2*D(3)*(a4(1) - a2(1) + a4(3))
+        F(1)=F(1)*Iota+2*a2(4)*W(1) + 2*a2(5)*W(2)
+        
         ! Fyy
-        F(2)=(2*a4(3)*D(1) - 2*a2(4)*D(4) + 4*a4(9)*D(4) + 4*a4(5)*D(5) - &
-             2*a2(2)*D(2) + 2*a4(2)*D(2) + 4*a4(8)*D(6) - 2*a2(6)*D(6)) * Iota - &
-             2*a2(4)*W(1) + 2*a2(6)*W(3) + (- 2*D(3)*(a4(3) - a2(2) + a4(2))) * Iota
+        F(2)=2*a4(3)*D(1) - 2*a2(4)*D(4) + 4*a4(9)*D(4) + 4*a4(5)*D(5) &
+             -2*a2(2)*D(2) + 2*a4(2)*D(2) + 4*a4(8)*D(6) - 2*a2(6)*D(6) &
+             - 2*D(3)*(a4(3) - a2(2) + a4(2))
+        F(2)=F(2)*Iota-2*a2(4)*W(1) + 2*a2(6)*W(3)
 
            ! Fzz
-        F(3)=(2*a2(5)*D(5) - 4*a4(6)*D(5) - 4*a4(4)*D(6) - 4*a4(5)*D(5) - &
-             2*a2(1)*D(3) + 2*a4(1)*D(3) + 4*a4(3)*D(3) - 4*a4(8)*D(6) + &
-             2*a2(6)*D(6) - 2*a2(2)*D(3) + 2*a4(2)*D(3)) * Iota - 2*a2(5)*W(2) - &
-             2*a2(6)*W(3) + (- 2*D(1)*(a4(1) - a2(1) + a4(3)) - 4*D(4)*(a4(7) - &
-             a2(4) + a4(9)) - 2*D(2)*(a4(3) - a2(2) + a4(2))) * Iota
-
+        F(3)=2*a2(5)*D(5) - 4*a4(6)*D(5) - 4*a4(4)*D(6) - 4*a4(5)*D(5) &
+             -2*a2(1)*D(3) + 2*a4(1)*D(3) + 4*a4(3)*D(3) - 4*a4(8)*D(6) &
+             +2*a2(6)*D(6) - 2*a2(2)*D(3) + 2*a4(2)*D(3)  &
+              - 2*D(1)*(a4(1) - a2(1) + a4(3)) - 4*D(4)*(a4(7) &
+              -a2(4) + a4(9)) - 2*D(2)*(a4(3) - a2(2) + a4(2)) 
+        F(3)=F(3)*Iota- 2*a2(5)*W(2) -2*a2(6)*W(3)
+        
            ! Fxy
-        F(4)=(2*a4(7)*D(1) - a2(1)*D(4) - a2(4)*D(1) + 4*a4(3)*D(4) + &
-             4*a4(4)*D(5) - a2(4)*D(2) - a2(2)*D(4) - a2(5)*D(6) - a2(6)*D(5) + &
-             2*a4(9)*D(2) + 4*a4(5)*D(6)) * Iota - a2(1)*W(1) + a2(2)*W(1) + &
-             a2(5)*W(3) + a2(6)*W(2) + (- 2*D(3)*(a4(7) - a2(4) + a4(9))) * Iota
-
+        F(4)=2*a4(7)*D(1) - a2(1)*D(4) - a2(4)*D(1) + 4*a4(3)*D(4) &
+             +4*a4(4)*D(5) - a2(4)*D(2) - a2(2)*D(4) - a2(5)*D(6) - a2(6)*D(5) &
+             +2*a4(9)*D(2) + 4*a4(5)*D(6)  &
+             - 2*D(3)*(a4(7) - a2(4) + a4(9)) 
+        F(4)=F(4)*Iota- a2(1)*W(1) + a2(2)*W(1)+a2(5)*W(3) + a2(6)*W(2)
+        
         ! Fxz
-        F(5)=(2*a4(6)*D(1) + 4*a4(4)*D(4) + 3*a2(1)*D(5) - a2(5)*D(1) - &
-             4*a4(1)*D(5) - 4*a4(3)*D(5) - 4*a4(7)*D(6) + 3*a2(4)*D(6) - &
-             a2(6)*D(4) - 2*a4(6)*D(3) + 2*a4(5)*D(2) - 4*a4(9)*D(6) + &
-             a2(5)*D(3) - a2(3)*D(5) - 2*a4(5)*D(3)) * Iota - a2(1)*W(2) - &
-             a2(4)*W(3) + a2(6)*W(1) + a2(3)*W(2)
-
+        F(5)=2*a4(6)*D(1) + 4*a4(4)*D(4) + 3*a2(1)*D(5) - a2(5)*D(1) &
+             -4*a4(1)*D(5) - 4*a4(3)*D(5) - 4*a4(7)*D(6) + 3*a2(4)*D(6) &
+             -a2(6)*D(4) - 2*a4(6)*D(3) + 2*a4(5)*D(2) - 4*a4(9)*D(6) &
+             +a2(5)*D(3) - a2(3)*D(5) - 2*a4(5)*D(3)
+        F(5)=F(5)*Iota- a2(1)*W(2) -a2(4)*W(3) + a2(6)*W(1) + a2(3)*W(2)
+        
         ! Fyz
-        F(6)=(2*a4(4)*D(1) - 4*a4(7)*D(5) + 3*a2(4)*D(5) - a2(5)*D(4) - &
-             4*a4(3)*D(6) + 4*a4(5)*D(4) - 4*a4(9)*D(5) - 2*a4(4)*D(3) + &
-             2*a4(8)*D(2) + 3*a2(2)*D(6) - a2(6)*D(2) - 4*a4(2)*D(6) - &
-             2*a4(8)*D(3) + a2(6)*D(3) - a2(3)*D(6)) * Iota - a2(4)*W(2) - &
-             a2(5)*W(1) - a2(2)*W(3) + a2(3)*W(3)
+        F(6)=2*a4(4)*D(1) - 4*a4(7)*D(5) + 3*a2(4)*D(5) - a2(5)*D(4) &
+             -4*a4(3)*D(6) + 4*a4(5)*D(4) - 4*a4(9)*D(5) - 2*a4(4)*D(3) &
+             +2*a4(8)*D(2) + 3*a2(2)*D(6) - a2(6)*D(2) - 4*a4(2)*D(6) &
+             -2*a4(8)*D(3) + a2(6)*D(3) - a2(3)*D(6)
+        F(6)=F(6)*Iota- a2(4)*W(2)-a2(5)*W(1) - a2(2)*W(3) + a2(3)*W(3)
+
 
         xd(1)=xa(1)-alpha(1)
         xd(2)=xa(2)-alpha(2)
@@ -595,6 +584,156 @@
 
   END DO
 
+
+!!$!!! In parallel, look for the lost ones (Ready for Age but not for a2!)
+!!$  IF (ParEnv % PES >1) THEN
+!!$
+!!$     ! Calculate number of nodes we haven't found in this partition and where could they be.
+!!$     RequestSend(1:ParEnv % PES)  % n = 0
+!!$     DO k=1,NM
+!!$        ! WE NEED NODE K if
+!!$        IF(Solver % Mesh % ParallelInfo % INTERFACE(k).AND.(.NOT.Found(k)).AND.(.NOT.isBC(k)))  THEN
+!!$
+!!$           nlist => Solver % Mesh % ParallelInfo % NeighbourList(k) % Neighbours
+!!$           nn=SIZE(Solver % Mesh % ParallelInfo % NeighbourList(k) % Neighbours)
+!!$           DO i=1,nn
+!!$              precv=nlist(i)
+!!$              IF(precv==ParEnv % MyPE) CYCLE
+!!$              RequestSend(precv+1)  % n = RequestSend(precv+1)  % n + 1
+!!$           END DO
+!!$        END IF
+!!$     END DO
+!!$
+!!$     !Now get serious and store all the info needed to send a request
+!!$     ! Allocate space
+!!$     DO i=1,ParEnv % PEs
+!!$        ALLOCATE(RequestSend(i) % gbuff( RequestSend(i)  % n))
+!!$     END DO
+!!$     ! And again but now storing data
+!!$     RequestSend(1:ParEnv % PES)  % n = 0
+!!$     DO k=1,NM     
+!!$        ! WE NEED NODE K if
+!!$        IF(Solver % Mesh % ParallelInfo % INTERFACE(k).AND.(.NOT.Found(k)).AND.(.NOT.isBC(k)))  THEN
+!!$           nlist => Solver % Mesh % ParallelInfo % NeighbourList(k) % Neighbours
+!!$           nn=SIZE(Solver % Mesh % ParallelInfo % NeighbourList(k) % Neighbours)
+!!$           DO i=1,nn
+!!$              precv=nlist(i)
+!!$              IF(precv==ParEnv % MyPE) CYCLE
+!!$              RequestSend(precv+1)  % n = RequestSend(precv+1)  % n + 1
+!!$              RequestSend(precv+1)  % gbuff(RequestSend(precv+1)  % n)=Solver % Mesh % ParallelInfo % GlobalDOFs(k)
+!!$           END DO
+!!$        END IF
+!!$     END DO
+
+  !Send number of requested nodes to partitions. They are RequestRecv in the other end
+!!$     DO i=1,ParEnv % PEs
+!!$        CALL MPI_iRECV(RequestRecv(i) % n, 1, MPI_INTEGER,i-1, 910, MPI_COMM_WORLD,request(i),ierr )       
+!!$     END DO
+!!$
+!!$     DO i=1,ParEnv % PEs
+!!$        CALL MPI_BSEND(RequestSend(i) % n, 1, MPI_INTEGER,i-1, 910, MPI_COMM_WORLD,ierr)
+!!$     END DO
+!!$
+!!$     CALL MPI_WaitAll( ParEnv % PEs,Request, MPI_STATUSES_IGNORE, ierr )
+
+!!$     !Allocate space for requested nodes from partition i-1 to this partition
+!!$     DO i=1,ParEnv % PEs
+!!$        ALLOCATE(RequestRecv(i) % gbuff( RequestRecv(i)  % n))
+!!$     END DO
+!!$
+!!$     !Send global DOF of the requested nodes across
+!!$     DO i=1,ParEnv % PEs
+!!$        CALL MPI_iRECV(RequestRecv(i) % gbuff,RequestRecv(i)  % n, &
+!!$             MPI_INTEGER,i-1, 910, MPI_COMM_WORLD,request(i),ierr )       
+!!$     END DO
+!!$
+!!$     DO i=1,ParEnv % PEs
+!!$        CALL MPI_BSEND(RequestSend(i) % gbuff,RequestSend(i)  % n, &
+!!$             MPI_INTEGER,i-1, 910, MPI_COMM_WORLD,ierr)
+!!$     END DO
+!!$
+!!$     CALL MPI_WaitAll( ParEnv % PEs,Request, MPI_STATUSES_IGNORE, ierr )
+!!$
+!!$     ! Now comes the big question. Do we have that info in this partition?     
+!!$     DO i=1,ParEnv % PEs
+!!$        !(I'm going to be optimistic in the space allocated)
+!!$        ALLOCATE(ReplySend(i) % vbuff(RequestRecv(i)  % n),ReplySend(i) % gbuff(RequestRecv(i)  % n))
+!!$        ReplySend(i) % n = 0
+!!$        DO j=1,RequestRecv(i) % n
+!!$           gk = RequestRecv(i) % gbuff(j)
+!!$           k=SearchNode( SystemMatrix % ParallelInfo,gk,Order= SystemMatrix % Perm)
+!!$           IF(k<0) CYCLE
+!!$           IF(Found(k)) THEN
+!!$              ReplySend(i) % n = ReplySend(i) % n + 1
+!!$              ReplySend(i) % vbuff(ReplySend(i) % n)=SystemMatrix % RHS(a2Perm(k))
+!!$              ReplySend(i) % gbuff(ReplySend(i) % n)=gk
+!!$           ELSE
+!!$              !Warning should be a bit more precisse than this, it could be in a third partition.
+!!$!              IF(SIZE(Solver % Mesh % ParallelInfo % NeighbourList(k) % Neighbours)==2) THEN
+!!$!                 PRINT *,'Could not find node',gk,k,' For partition' ,i-1
+!!$!              END IF
+!!$           END IF
+!!$        END DO
+!!$     END DO
+!!$
+!!$     !Send number of Replies to partitions. They are ReplyRecv in the other end
+!!$     DO i=1,ParEnv % PEs
+!!$        CALL MPI_iRECV(ReplyRecv(i) % n, 1, MPI_INTEGER,i-1, 910, MPI_COMM_WORLD,request(i),ierr )       
+!!$     END DO
+!!$
+!!$     DO i=1,ParEnv % PEs
+!!$        CALL MPI_BSEND(ReplySend(i) % n, 1, MPI_INTEGER,i-1, 910, MPI_COMM_WORLD,ierr)
+!!$     END DO
+!!$
+!!$     CALL MPI_WaitAll( ParEnv % PEs,Request, MPI_STATUSES_IGNORE, ierr )
+!!$
+!!$     !Send the global DOF of the found nodes
+!!$     DO i=1,ParEnv % PEs
+!!$        ALLOCATE(ReplyRecv(i) % gbuff(ReplyRecv(i)  % n))
+!!$        CALL MPI_iRECV(ReplyRecv(i) % gbuff,ReplyRecv(i)  % n, &
+!!$             MPI_INTEGER,i-1, 910, MPI_COMM_WORLD,request(i),ierr )       
+!!$     END DO
+!!$
+!!$     DO i=1,ParEnv % PEs
+!!$        CALL MPI_BSEND(ReplySend(i) % gbuff,ReplySend(i)  % n, &
+!!$             MPI_INTEGER,i-1, 910, MPI_COMM_WORLD,ierr)
+!!$     END DO
+!!$
+!!$     CALL MPI_WaitAll( ParEnv % PEs,request, MPI_STATUSES_IGNORE, ierr )
+!!$
+!!$     !Send the a2 values of the requested nodes
+!!$     DO i=1,ParEnv % PEs
+!!$        ALLOCATE(ReplyRecv(i) % vbuff(ReplyRecv(i)  % n))
+!!$        CALL MPI_iRECV(ReplyRecv(i) % vbuff,ReplyRecv(i)  % n, &
+!!$             MPI_DOUBLE_PRECISION,i-1, 910, MPI_COMM_WORLD,request(i),ierr )
+!!$     END DO
+!!$
+!!$     DO i=1,ParEnv % PEs
+!!$        CALL MPI_BSEND(ReplySend(i) % vbuff,ReplySend(i)  % n, &
+!!$             MPI_DOUBLE_PRECISION,i-1, 910, MPI_COMM_WORLD,ierr)
+!!$     END DO
+!!$
+!!$     CALL MPI_WaitAll( ParEnv % PEs,request, MPI_STATUSES_IGNORE, ierr )
+!!$
+!!$     !Finally make it happen!
+!!$     DO i=1,ParEnv % PEs
+!!$        DO j=1,ReplyRecv(i)  % n
+!!$           gk=ReplyRecv(i) % gbuff(j)
+!!$           k=SearchNode( SystemMatrix % ParallelInfo,gk,Order= SystemMatrix % Perm)
+!!$           IF(k<0) CYCLE
+!!$           ka=a2Perm(k)
+!!$           a2a=ReplyRecv(i) % vbuff(j)
+!!$
+!!$           CALL SetMatrixElement( SystemMatrix, ka, ka, 1.0d0 ) 
+!!$           SystemMatrix % RHS(ka) = a2a
+!!$
+!!$           !           a2(ka)=a2a
+!!$        END DO
+!!$     END DO
+!!$  END IF
+
+
+
   CALL DefaultDirichletBCs()
 
   !------------------------------------------------------------------------------
@@ -623,206 +762,3 @@
 
 END SUBROUTINE FabricEvolutionSolver
 
-
-
-
-!!!
-!!! Fabian 2006
-!!!    
-!!! calcul de a4 a partir de a2 par fermeture IBOF (Chung 2002)
-!!! a2 rentre dans l'ordre : 11, 22, 33, 12, 23 ,13
-!!! a4  sort dans l'ordre : 1111, 2222, 1122, 1123, 2231, 1131, 1112, 2223, 2212
-!!!
-!------------------------------------------------------------------------------
-subroutine IBOF(a2,a4)
-
-  USE Types
-
-  implicit none
-  Real(dp),dimension(6),intent(in):: a2  
-  Real(dp),dimension(9),intent(out):: a4  
-  Real(dp):: a_11,a_22,a_33,a_12,a_13,a_23
-  Real(dp):: b_11,b_22,b_12,b_13,b_23
-  Real(dp):: aPlusa
-
-  Real(dp),dimension(21) :: vec
-  Real(dp),dimension(3,21) :: Mat
-  Real(dp),dimension(6) :: beta
-  Real(dp) :: Inv2,Inv3
-  integer :: i,j      
-
-
-  a_11=a2(1)
-  a_22=a2(2)
-  a_33=a2(3)
-  a_12=a2(4)
-  a_23=a2(5)
-  a_13=a2(6)
-
-  !Coefficients 
-
-  Mat(1,1)=0.217774509809788e+02_dp
-  Mat(1,2)=-.297570854171128e+03_dp
-  Mat(1,3)=0.188686077307885e+04_dp
-  Mat(1,4)=-.272941724578513e+03_dp
-  Mat(1,5)=0.417148493642195e+03_dp
-  Mat(1,6)=0.152038182241196e+04_dp
-  Mat(1,7)=-.137643852992708e+04_dp
-  Mat(1,8)=-.628895857556395e+03_dp
-  Mat(1,9)=-.526081007711996e+04_dp
-  Mat(1,10)=-.266096234984017e+03_dp
-  Mat(1,11)=-.196278098216953e+04_dp
-  Mat(1,12)=-.505266963449819e+03_dp
-  Mat(1,13)=-.110483041928547e+03_dp
-  Mat(1,14)=0.430488193758786e+04_dp
-  Mat(1,15)=-.139197970442470e+02_dp
-  Mat(1,16)=-.144351781922013e+04_dp
-  Mat(1,17)=-.265701301773249e+03_dp
-  Mat(1,18)=-.428821699139210e+02_dp
-  Mat(1,19)=-.443236656693991e+01_dp
-  Mat(1,20)=0.309742340203200e+04_dp
-  Mat(1,21)=0.386473912295113e+00_dp
-  Mat(2,1)=-.514850598717222e+00_dp
-  Mat(2,2)=0.213316362570669e+02_dp
-  Mat(2,3)=-.302865564916568e+03_dp
-  Mat(2,4)=-.198569416607029e+02_dp
-  Mat(2,5)=-.460306750911640e+02_dp
-  Mat(2,6)=0.270825710321281e+01_dp
-  Mat(2,7)=0.184510695601404e+03_dp
-  Mat(2,8)=0.156537424620061e+03_dp
-  Mat(2,9)=0.190613131168980e+04_dp
-  Mat(2,10)=0.277006550460850e+03_dp
-  Mat(2,11)=-.568117055198608e+02_dp
-  Mat(2,12)=0.428921546783467e+03_dp
-  Mat(2,13)=0.142494945404341e+03_dp
-  Mat(2,14)=-.541945228489881e+04_dp
-  Mat(2,15)=0.233351898912768e+02_dp
-  Mat(2,16)=0.104183218654671e+04_dp
-  Mat(2,17)=0.331489412844667e+03_dp
-  Mat(2,18)=0.660002154209991e+02_dp
-  Mat(2,19)=0.997500770521877e+01_dp
-  Mat(2,20)=0.560508628472486e+04_dp
-  Mat(2,21)=0.209909225990756e+01_dp
-  Mat(3,1)=0.203814051719994e+02_dp
-  Mat(3,2)=-.283958093739548e+03_dp
-  Mat(3,3)=0.173908241235198e+04_dp
-  Mat(3,4)=-.195566197110461e+03_dp
-  Mat(3,5)=-.138012943339611e+03_dp
-  Mat(3,6)=0.523629892715050e+03_dp
-  Mat(3,7)=0.859266451736379e+03_dp
-  Mat(3,8)=-.805606471979730e+02_dp
-  Mat(3,9)=-.468711180560599e+04_dp
-  Mat(3,10)=0.889580760829066e+01_dp
-  Mat(3,11)=-.782994158054881e+02_dp
-  Mat(3,12)=-.437214580089117e+02_dp
-  Mat(3,13)=0.112996386047623e+01_dp
-  Mat(3,14)=0.401746416262936e+04_dp
-  Mat(3,15)=0.104927789918320e+01_dp
-  Mat(3,16)=-.139340154288711e+03_dp
-  Mat(3,17)=-.170995948015951e+02_dp
-  Mat(3,18)=0.545784716783902e+00_dp
-  Mat(3,19)=0.971126767581517e+00_dp
-  Mat(3,20)=0.141909512967882e+04_dp
-  Mat(3,21)=0.994142892628410e+00_dp
-
-
-  ! calcul des invariants
-  Inv2=0.5_dp*(1._dp-(a_11*a_11+a_22*a_22+a_33*a_33+ &
-       2._dp*(a_12*a_12+a_13*a_13+a_23*a_23)))
-
-  Inv3=a_11*(a_22*a_33-a_23*a_23)+a_12*(a_23*a_13-a_12*a_33)+ &
-       a_13*(a_12*a_23-a_22*a_13)
-
-  ! polynome complet de degre 5 des 2 invariants.
-  vec(1)=1._dp
-  vec(2)=Inv2
-  vec(3)=vec(2)*vec(2)
-  vec(4)=Inv3
-  vec(5)=vec(4)*vec(4)
-  vec(6)=vec(2)*vec(4)
-  vec(7)=vec(3)*vec(4)
-  vec(8)=vec(2)*vec(5)
-  vec(9)=vec(2)*vec(3)
-  vec(10)=vec(5)*vec(4)
-  vec(11)=vec(9)*vec(4)
-  vec(12)=vec(3)*vec(5)
-  vec(13)=vec(2)*vec(10)
-  vec(14)=vec(3)*vec(3)
-  vec(15)=vec(5)*vec(5)
-  vec(16)=vec(14)*vec(4)
-  vec(17)=vec(12)*vec(2)
-  vec(18)=vec(12)*vec(4)
-  vec(19)=vec(2)*vec(15)
-  vec(20)=vec(14)*vec(2)
-  vec(21)=vec(15)*vec(4)
-
-  ! calcul des beta_bar (cf annexe C Chung)
-  ! attention beta(1)=beta_bar_3 (Chung); beta(2)=beta_bar_4; beta(3)=beta_bar_6
-  !           beta(4)=beta_bar_1        ; beta(5)=beta_bar_2; beta(6)=beta_bar_5
-
-  ! calcul des trois beta en fonction du polynome
-  beta(:)=0._dp
-  Do i=1,3
-     Do j=1,21
-        beta(i)=beta(i)+Mat(i,j)*vec(j)
-     End do
-  End do
-
-  ! calcul des 3 autres pour avoir la normalisation
-  beta(4)=3._dp*(-1._dp/7._dp+beta(1)*(1._dp/7._dp+4._dp*Inv2/7._dp+8._dp*Inv3/3._dp)/5._dp- &
-       beta(2)*(0.2_dp-8._dp*Inv2/15._dp-14._dp*Inv3/15._dp)- &
-       beta(3)*(1._dp/35._dp-24._dp*Inv3/105._dp-4._dp*Inv2/35._dp+ &
-       16._dp*Inv2*Inv3/15._dp+8._dp*Inv2*Inv2/35._dp))/5._dp
-
-  beta(5)=6._dp*(1._dp-0.2_dp*beta(1)*(1._dp+4._dp*Inv2)+ &
-       7._dp*beta(2)*(1._dp/6._dp-Inv2)/5._dp- &
-       beta(3)*(-0.2_dp+2._dp*Inv3/3._dp+4._dp*Inv2/5._dp- &
-       8._dp*Inv2*Inv2/5._dp))/7._dp
-
-  beta(6)=-4._dp*beta(1)/5._dp-7._dp*beta(2)/5._dp- &
-       6._dp*beta(3)*(1._dp-4._dp*Inv2/3._dp)/5._dp
-
-  ! pour avoir les beta_bar
-  Do i=1,6
-     beta(i)=beta(i)/3._dp
-  End do
-  beta(2)=beta(2)/2._dp
-  beta(5)=beta(5)/2._dp
-  beta(6)=beta(6)/2._dp
-
-  !! calcul des 5 b=a.a
-  b_11=a_11*a_11+a_12*a_12+a_13*a_13
-  b_22=a_22*a_22+a_12*a_12+a_23*a_23
-  b_12=a_11*a_12+a_12*a_22+a_13*a_23
-  b_13=a_11*a_13+a_12*a_23+a_13*a_33
-  b_23=a_12*a_13+a_22*a_23+a_23*a_33
-
-  !Calcul des 9 termes de a4
-
-  a4(1)=3._dp*beta(4)+6._dp*beta(5)*a_11+3._dp*beta(1)*a_11*a_11+&
-       6._dp*beta(2)*b_11+6._dp*beta(6)*a_11*b_11+3._dp*beta(3)*b_11*b_11
-  a4(2)=3._dp*beta(4)+6._dp*beta(5)*a_22+3._dp*beta(1)*a_22*a_22+&
-       6._dp*beta(2)*b_22+6._dp*beta(6)*a_22*b_22+3._dp*beta(3)*b_22*b_22
-
-  a4(3)=beta(4)+beta(5)*(a_22+a_11)+beta(1)*(a_11*a_22+2._dp*a_12*a_12)+&
-       beta(2)*(b_22+b_11)+beta(6)*(a_11*b_22+a_22*b_11+4._dp*a_12*b_12)+&
-       beta(3)*(b_11*b_22+2._dp*b_12*b_12)
-
-
-  a4(4)=beta(5)*a_23+beta(1)*(a_11*a_23+2._dp*a_12*a_13)+beta(2)*b_23+&
-       beta(6)*(a_11*b_23+a_23*b_11+2._dp*(a_12*b_13+a_13*b_12))+beta(3)*&
-       (b_11*b_23+2._dp*b_12*b_13)
-  a4(5)=beta(5)*a_13+beta(1)*(a_22*a_13+2._dp*a_12*a_23)+beta(2)*b_13+&
-       beta(6)*(a_22*b_13+a_13*b_22+2._dp*(a_12*b_23+a_23*b_12))+beta(3)*&
-       (b_22*b_13+2._dp*b_12*b_23)
-
-
-  a4(6)=3._dp*beta(5)*a_13+3._dp*beta(1)*a_11*a_13+3._dp*beta(2)*b_13+&
-       3._dp*beta(6)*(a_11*b_13+a_13*b_11)+3._dp*beta(3)*b_11*b_13
-  a4(7)=3._dp*beta(5)*a_12+3._dp*beta(1)*a_11*a_12+3._dp*beta(2)*b_12+&
-       3._dp*beta(6)*(a_11*b_12+a_12*b_11)+3._dp*beta(3)*b_11*b_12
-  a4(8)=3._dp*beta(5)*a_23+3._dp*beta(1)*a_22*a_23+3._dp*beta(2)*b_23+&
-       3._dp*beta(6)*(a_22*b_23+a_23*b_22)+3._dp*beta(3)*b_22*b_23
-  a4(9)=3._dp*beta(5)*a_12+3._dp*beta(1)*a_22*a_12+3._dp*beta(2)*b_12+&
-       3._dp*beta(6)*(a_22*b_12+a_12*b_22)+3._dp*beta(3)*b_22*b_12
-End subroutine IBOF

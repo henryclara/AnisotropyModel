@@ -51,8 +51,8 @@ Simulation
 
   Timestepping Method = "bdf"
   BDF Order = 1
-  Timestep Intervals = 2000
-  Output Intervals = 2000
+  Timestep Intervals = 20
+  Output Intervals = 1
   Timestep Sizes = 0.5
 
   Initialize Dirichlet Conditions = Logical False

@@ -59,11 +59,9 @@
 
    REAL(KIND=dp) :: fa,fd
    INTEGER :: a4DOFs,etaDOFs,DDOFs,WDOFs,MaxDOFs
-   REAL(KIND=dp), ALLOCATABLE :: a2d(:),a2(:), a2a(:),a4(:), a2o(:),&
-         Angle(:),FabricGrid(:)&
-        ,eta(:,:),etaTemp(:,:),DTay(:),DU(:),D(:),W(:),F(:)
-   Integer :: Swap(6)
-   CHARACTER(LEN=MAX_NAME_LEN) :: viscosityFile
+   REAL(KIND=dp), ALLOCATABLE :: a2d(:),a2(:), a2a(:),a4(:)&
+        ,eta(:,:),DTay(:),DU(:),D(:),W(:),F(:)
+
 
    !   REAL(KIND=dp) :: at,st,totat,totst,CPUTime,Norm,PrevNorm,RelativeChange
       REAL(KIND=dp) :: at,st,totat,totst,Norm,PrevNorm,RelativeChange
@@ -86,29 +84,7 @@
    TYPE(buffer_t) :: RequestSend(ParEnv % PEs),RequestRecv(ParEnv % PEs)
    TYPE(buffer_t) :: ReplySend(ParEnv % PEs),ReplyRecv(ParEnv % PEs)
 
-   INTERFACE
-      SUBROUTINE IBOF(ai,a4)
-        USE Types
-        REAL(KIND=dp),intent(in) :: ai(6)
-        REAL(KIND=dp),intent(out) :: a4(9)
-      END SUBROUTINE IBOF
 
-      Subroutine R2Ro(ai,dim,a2,angle)
-        USE Types
-        REAL(KIND=dp),intent(in) :: ai(6)
-        Integer :: dim
-        REAL(KIND=dp),intent(out) :: a2(3), Angle(3)
-      End Subroutine R2Ro
-
-      Subroutine OPILGGE_ai_nl(a2,Angle,etaI,eta36)
-        USE Types
-        REAL(kind=dp), INTENT(in),  DIMENSION(3)   :: a2
-        REAL(kind=dp), INTENT(in),  DIMENSION(3)   :: Angle
-        REAL(kind=dp), INTENT(in),  DIMENSION(:)   :: etaI
-        REAL(kind=dp), INTENT(out), DIMENSION(6,6) :: eta36
-      END SUBROUTINE OPILGGE_ai_nl
-
-   END INTERFACE
 
    SAVE FirstTime,NoNeigh,NeighList,Found,isBC,isa2In
 
@@ -135,8 +111,6 @@
    IF(.NOT. GotIt) CALL Fatal( 'FabricEvolutionSolver','Could find value of Alpha, Aborting.' ) 
    Iota = ListGetConstReal(Solver % Values, 'Iota',GotIt)
    IF(.NOT. GotIt) CALL Fatal( 'FabricEvolutionSolver','Could find value of Iota, Aborting.' )
-   Rho = ListGetConstReal(Solver % Values, 'Alpha',GotIt) !Swapping to Rho as Fabien
-   IF(.NOT. GotIt) CALL Fatal( 'FabricEvolutionSolver','Could find value of Alpha, Aborting.' ) 
 
    lambda1=2*((gama+2)/(4*gama-1)*beta-1.0)
    lambda2=(1.0-beta)
@@ -180,10 +154,7 @@
        a2(DOFs),                                 &
        a2a(DOFs),                                 &
        a4(a4DOFs),                                 &
-       a2o(DOFs),                                 &
-       Angle(DOFs),                                 &
        eta(DDOFs,DDOFs),                               &
-       etaTemp(DDOFs,DDOFs),                               &
        DTay(DDOFs),                                 &
        DU(DDOFs),                                 &
        D(DDOFs),                                 &
@@ -199,7 +170,6 @@
           Neighlist(NM,NNMAX),&
           Found(NM),                  &
           Cond(NMAX),                  &
-          FabricGrid(4879),                                 &
           STAT=stat  )
      IF ( stat /= 0 ) THEN
         CALL Fatal('FabricEvolutionSolver','Memory allocation error, Aborting.')
@@ -310,15 +280,6 @@
         END DO
      END IF
 
-     !Read FabricGrid
-     viscosityFile = ListGetString(Solver % Values, 'Viscosity File',GotIt)
-     IF(.NOT. GotIt) CALL Fatal( 'FabricEvolutionSolver','Could find name of Viscosity File, Aborting.' ) 
-     OPEN( 1, File = viscosityFile)
-     DO i=1,813
-        READ( 1, '(6(e14.8))' ) FabricGrid( 6*(i-1)+1:6*(i-1)+6 )
-     END DO
-     READ(1 , '(e14.8)' ) FabricGrid(4879)
-     CLOSE(1)
 
   END IF
 
@@ -431,42 +392,53 @@
                 LocalCoordinates(1),LocalCoordinates(2), LocalCoordinates(3))
         END DO
 
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !Getting viscosity at the middle point    ! Swapping xz by yz to fit the Deformation Solver!!!!!!!!!!!!!!!!!!!!!!!!!!
+        CALL GetVectorLocalSolution(Vector, 'etaijkl',Element)
+        iv=1
+         DO ip=1,3
+            DO jp=ip,3
+               DO kp=1,3
+                  DO lp=kp,3
+
+                       IF(ip==jp) THEN
+                          i=ip
+                       ELSE IF(ip==1.AND.jp==2) THEN
+                          i=4
+                       ELSE IF(ip==1.AND.jp==3) THEN
+                          i=5
+                       ELSE
+                          i=6
+                       END IF
+
+                       IF(kp==lp) THEN
+                          j=kp
+                       ELSE IF(kp==1.AND.lp==2) THEN
+                          j=4
+                       ELSE IF(kp==1.AND.lp==3) THEN
+                          j=5
+                       ELSE
+                          j=6
+                       END IF
+
+                       eta(i,j)=EU*InterpolateInElement(Element,Vector(iv,1:n),&
+                            LocalCoordinates(1),LocalCoordinates(2), LocalCoordinates(3))
+
+                       iv=iv+1
+                  END DO
+               END DO
+            END DO
+         END DO
+
         DU=0.0d0
-        IF(Rho>0.0) THEN
-           !Getting viscosity at the middle point
+        DU=MATMUL(eta,DTay)
 
-           !    fourth order orientation tensor
-           ! a4 at the middle point (IBOF closure)  
-!!! (a2 rentre dans l'ordre : 11, 22, 33, 12, 23 ,13)
-           Swap(1:6)=(/1,2,3,4,6,5/)
-           CALL IBOF(a2(Swap(1:6)),a4)
-
-           !     A2 expressed in the orthotropic frame
-           call R2Ro(a2(Swap(1:6)),DIM,a2o,Angle)
-
-           !     Get viscosity in Fabien order
-           CALL OPILGGE_ai_nl(a2o, Angle, FabricGrid, etaTemp)
-
-           !Swap Fabien index
-           Do ip=1,DDOFs
-              Do jp=1,DDOFs
-                 eta(ip,jp)=etaTemp(Swap(ip),Swap(jp))
-              End Do
-           EndDo
-           ! Also, removing the 2 in the diagonal terms of the compressive part
-           Do ip=1,3
-              eta(ip,ip)=eta(ip,ip)/2.0;
-           END Do
-
-           DU=MATMUL(eta,DTay)
-        END IF
-
-        !Alpha Fabric, rho here,  weights between uniform (1) and Taylor (0)
+        !Alpha Fabric weight between uniform (1) and Taylor (0)
         DO j=1,DDOFs
-           D(j)=DTay(j)*(1.0-Rho)+DU(j)*Rho
- !          PRINT *,j,DTay(j),DU(j),D(j)
+           D(j)=DTay(j)*(1.0-AlphaFabric)+DU(j)*AlphaFabric
+           !PRINT *,j,DTay(j),DU(j),D(j)
         END DO
-
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! 
         !  Calculating the forcing in the middle point
@@ -475,11 +447,6 @@
         !translation to Elmerish through 
         ! algebra/Forcing2D.f90 and algebra/Forcing3D.f90   
         !
-
-        WRITE( Message, * ) 'Alpha:   : ',Rho
-        CALL Info( 'FabricEvolutionSolver', Message, Level=3 )
-        WRITE( Message, * ) 'Iota:   : ',Iota
-        CALL Info( 'FabricEvolutionSolver', Message, Level=3 )
 
         ! Fxx
         F(1)=(2*a4(1)*D(1) - 2*a2(1)*D(1) + 4*a4(7)*D(4) - 2*a2(4)*D(4) + &
@@ -594,6 +561,156 @@
      END IF
 
   END DO
+
+
+!!$!!! In parallel, look for the lost ones (Ready for Age but not for a2!)
+!!$  IF (ParEnv % PES >1) THEN
+!!$
+!!$     ! Calculate number of nodes we haven't found in this partition and where could they be.
+!!$     RequestSend(1:ParEnv % PES)  % n = 0
+!!$     DO k=1,NM
+!!$        ! WE NEED NODE K if
+!!$        IF(Solver % Mesh % ParallelInfo % INTERFACE(k).AND.(.NOT.Found(k)).AND.(.NOT.isBC(k)))  THEN
+!!$
+!!$           nlist => Solver % Mesh % ParallelInfo % NeighbourList(k) % Neighbours
+!!$           nn=SIZE(Solver % Mesh % ParallelInfo % NeighbourList(k) % Neighbours)
+!!$           DO i=1,nn
+!!$              precv=nlist(i)
+!!$              IF(precv==ParEnv % MyPE) CYCLE
+!!$              RequestSend(precv+1)  % n = RequestSend(precv+1)  % n + 1
+!!$           END DO
+!!$        END IF
+!!$     END DO
+!!$
+!!$     !Now get serious and store all the info needed to send a request
+!!$     ! Allocate space
+!!$     DO i=1,ParEnv % PEs
+!!$        ALLOCATE(RequestSend(i) % gbuff( RequestSend(i)  % n))
+!!$     END DO
+!!$     ! And again but now storing data
+!!$     RequestSend(1:ParEnv % PES)  % n = 0
+!!$     DO k=1,NM     
+!!$        ! WE NEED NODE K if
+!!$        IF(Solver % Mesh % ParallelInfo % INTERFACE(k).AND.(.NOT.Found(k)).AND.(.NOT.isBC(k)))  THEN
+!!$           nlist => Solver % Mesh % ParallelInfo % NeighbourList(k) % Neighbours
+!!$           nn=SIZE(Solver % Mesh % ParallelInfo % NeighbourList(k) % Neighbours)
+!!$           DO i=1,nn
+!!$              precv=nlist(i)
+!!$              IF(precv==ParEnv % MyPE) CYCLE
+!!$              RequestSend(precv+1)  % n = RequestSend(precv+1)  % n + 1
+!!$              RequestSend(precv+1)  % gbuff(RequestSend(precv+1)  % n)=Solver % Mesh % ParallelInfo % GlobalDOFs(k)
+!!$           END DO
+!!$        END IF
+!!$     END DO
+
+  !Send number of requested nodes to partitions. They are RequestRecv in the other end
+!!$     DO i=1,ParEnv % PEs
+!!$        CALL MPI_iRECV(RequestRecv(i) % n, 1, MPI_INTEGER,i-1, 910, MPI_COMM_WORLD,request(i),ierr )       
+!!$     END DO
+!!$
+!!$     DO i=1,ParEnv % PEs
+!!$        CALL MPI_BSEND(RequestSend(i) % n, 1, MPI_INTEGER,i-1, 910, MPI_COMM_WORLD,ierr)
+!!$     END DO
+!!$
+!!$     CALL MPI_WaitAll( ParEnv % PEs,Request, MPI_STATUSES_IGNORE, ierr )
+
+!!$     !Allocate space for requested nodes from partition i-1 to this partition
+!!$     DO i=1,ParEnv % PEs
+!!$        ALLOCATE(RequestRecv(i) % gbuff( RequestRecv(i)  % n))
+!!$     END DO
+!!$
+!!$     !Send global DOF of the requested nodes across
+!!$     DO i=1,ParEnv % PEs
+!!$        CALL MPI_iRECV(RequestRecv(i) % gbuff,RequestRecv(i)  % n, &
+!!$             MPI_INTEGER,i-1, 910, MPI_COMM_WORLD,request(i),ierr )       
+!!$     END DO
+!!$
+!!$     DO i=1,ParEnv % PEs
+!!$        CALL MPI_BSEND(RequestSend(i) % gbuff,RequestSend(i)  % n, &
+!!$             MPI_INTEGER,i-1, 910, MPI_COMM_WORLD,ierr)
+!!$     END DO
+!!$
+!!$     CALL MPI_WaitAll( ParEnv % PEs,Request, MPI_STATUSES_IGNORE, ierr )
+!!$
+!!$     ! Now comes the big question. Do we have that info in this partition?     
+!!$     DO i=1,ParEnv % PEs
+!!$        !(I'm going to be optimistic in the space allocated)
+!!$        ALLOCATE(ReplySend(i) % vbuff(RequestRecv(i)  % n),ReplySend(i) % gbuff(RequestRecv(i)  % n))
+!!$        ReplySend(i) % n = 0
+!!$        DO j=1,RequestRecv(i) % n
+!!$           gk = RequestRecv(i) % gbuff(j)
+!!$           k=SearchNode( SystemMatrix % ParallelInfo,gk,Order= SystemMatrix % Perm)
+!!$           IF(k<0) CYCLE
+!!$           IF(Found(k)) THEN
+!!$              ReplySend(i) % n = ReplySend(i) % n + 1
+!!$              ReplySend(i) % vbuff(ReplySend(i) % n)=SystemMatrix % RHS(a2Perm(k))
+!!$              ReplySend(i) % gbuff(ReplySend(i) % n)=gk
+!!$           ELSE
+!!$              !Warning should be a bit more precisse than this, it could be in a third partition.
+!!$!              IF(SIZE(Solver % Mesh % ParallelInfo % NeighbourList(k) % Neighbours)==2) THEN
+!!$!                 PRINT *,'Could not find node',gk,k,' For partition' ,i-1
+!!$!              END IF
+!!$           END IF
+!!$        END DO
+!!$     END DO
+!!$
+!!$     !Send number of Replies to partitions. They are ReplyRecv in the other end
+!!$     DO i=1,ParEnv % PEs
+!!$        CALL MPI_iRECV(ReplyRecv(i) % n, 1, MPI_INTEGER,i-1, 910, MPI_COMM_WORLD,request(i),ierr )       
+!!$     END DO
+!!$
+!!$     DO i=1,ParEnv % PEs
+!!$        CALL MPI_BSEND(ReplySend(i) % n, 1, MPI_INTEGER,i-1, 910, MPI_COMM_WORLD,ierr)
+!!$     END DO
+!!$
+!!$     CALL MPI_WaitAll( ParEnv % PEs,Request, MPI_STATUSES_IGNORE, ierr )
+!!$
+!!$     !Send the global DOF of the found nodes
+!!$     DO i=1,ParEnv % PEs
+!!$        ALLOCATE(ReplyRecv(i) % gbuff(ReplyRecv(i)  % n))
+!!$        CALL MPI_iRECV(ReplyRecv(i) % gbuff,ReplyRecv(i)  % n, &
+!!$             MPI_INTEGER,i-1, 910, MPI_COMM_WORLD,request(i),ierr )       
+!!$     END DO
+!!$
+!!$     DO i=1,ParEnv % PEs
+!!$        CALL MPI_BSEND(ReplySend(i) % gbuff,ReplySend(i)  % n, &
+!!$             MPI_INTEGER,i-1, 910, MPI_COMM_WORLD,ierr)
+!!$     END DO
+!!$
+!!$     CALL MPI_WaitAll( ParEnv % PEs,request, MPI_STATUSES_IGNORE, ierr )
+!!$
+!!$     !Send the a2 values of the requested nodes
+!!$     DO i=1,ParEnv % PEs
+!!$        ALLOCATE(ReplyRecv(i) % vbuff(ReplyRecv(i)  % n))
+!!$        CALL MPI_iRECV(ReplyRecv(i) % vbuff,ReplyRecv(i)  % n, &
+!!$             MPI_DOUBLE_PRECISION,i-1, 910, MPI_COMM_WORLD,request(i),ierr )
+!!$     END DO
+!!$
+!!$     DO i=1,ParEnv % PEs
+!!$        CALL MPI_BSEND(ReplySend(i) % vbuff,ReplySend(i)  % n, &
+!!$             MPI_DOUBLE_PRECISION,i-1, 910, MPI_COMM_WORLD,ierr)
+!!$     END DO
+!!$
+!!$     CALL MPI_WaitAll( ParEnv % PEs,request, MPI_STATUSES_IGNORE, ierr )
+!!$
+!!$     !Finally make it happen!
+!!$     DO i=1,ParEnv % PEs
+!!$        DO j=1,ReplyRecv(i)  % n
+!!$           gk=ReplyRecv(i) % gbuff(j)
+!!$           k=SearchNode( SystemMatrix % ParallelInfo,gk,Order= SystemMatrix % Perm)
+!!$           IF(k<0) CYCLE
+!!$           ka=a2Perm(k)
+!!$           a2a=ReplyRecv(i) % vbuff(j)
+!!$
+!!$           CALL SetMatrixElement( SystemMatrix, ka, ka, 1.0d0 ) 
+!!$           SystemMatrix % RHS(ka) = a2a
+!!$
+!!$           !           a2(ka)=a2a
+!!$        END DO
+!!$     END DO
+!!$  END IF
+
+
 
   CALL DefaultDirichletBCs()
 
